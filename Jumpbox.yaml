@@ -5,8 +5,34 @@ Mappings:
     eu-central-1:
       AMALINUX: "ami-0d4c3eabb9e72650a"
 Resources:
+  SG:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+       GroupDescription: !Sub "${AWS::StackName} Security group"
+       GroupName: !Sub "${AWS::StackName} Security group"
+       SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
   EC2:
     Type: "AWS::EC2::Instance"
     Properties:
       ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMALINUX] # Dynamic mapping + Pseudo Parameter
       InstanceType: "t2.micro"
+      Tags:
+        - 
+          Key: Name
+          Value: !Sub "${AWS::StackName} Instance"
+      SecurityGroups:
+        - !Ref SG
+      UserData:
+        "Fn::Base64":
+          !Sub |
+            #!/bin/bash
+            yum install httpd php mysql php-mysql -y
+            yum update -y
+            chkconfig httpd on
+            service httpd start
+            cd /var/www/html
+            echo "<h1>Hello world</h1>" > /var/www/html/index.html
