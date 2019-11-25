@@ -1,9 +1,14 @@
+Parameters:
+  KeyPair:
+    Type: "AWS::EC2::KeyPair::KeyName"
+
 Mappings:
   RegionMap:
     us-west-1:
       AMALINUX: "ami-0b2d8d1abb76a53d8"
     eu-central-1:
       AMALINUX: "ami-0d4c3eabb9e72650a"
+
 Resources:
   SG:
     Type: "AWS::EC2::SecurityGroup"
@@ -26,6 +31,7 @@ Resources:
           Value: !Sub "${AWS::StackName} Instance"
       SecurityGroups:
         - !Ref SG
+      KeyName: !Ref KeyPair
       UserData:
         "Fn::Base64":
           !Sub |
@@ -35,4 +41,3 @@ Resources:
             chkconfig httpd on
             service httpd start
             cd /var/www/html
-            echo "<h1>Hello world</h1>" > /var/www/html/index.html
