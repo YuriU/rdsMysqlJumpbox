@@ -1,0 +1,12 @@
+Mappings:
+  RegionMap:
+    us-west-1:
+      AMALINUX: "ami-0b2d8d1abb76a53d8"
+    eu-central-1:
+      AMALINUX: "ami-0d4c3eabb9e72650a"
+Resources:
+  EC2:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMALINUX] # Dynamic mapping + Pseudo Parameter
+      InstanceType: "t2.micro"
