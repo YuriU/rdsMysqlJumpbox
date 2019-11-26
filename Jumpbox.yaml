@@ -1,3 +1,10 @@
+Parameters:
+  VpcId:
+    Description: Enter the VpcId
+    Type: "AWS::EC2::VPC::Id"
+  SubnetId:
+    Description: Enter the SubnetId
+    Type: AWS::EC2::Subnet::Id
 Mappings:
   RegionMap:
     us-west-1:
@@ -9,8 +16,8 @@ Resources:
   SG:
     Type: "AWS::EC2::SecurityGroup"
     Properties:
+       VpcId: !Ref VpcId
        GroupDescription: !Sub "${AWS::StackName} Security group"
-       GroupName: !Sub "${AWS::StackName} Security group"
        SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
@@ -25,11 +32,12 @@ Resources:
     Properties:
       ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMALINUX] # Dynamic mapping + Pseudo Parameter
       InstanceType: "t2.micro"
+      SubnetId: !Ref SubnetId
       Tags:
         - 
           Key: Name
           Value: !Sub "${AWS::StackName} Instance"
-      SecurityGroups:
+      SecurityGroupIds:
         - !Ref SG
       UserData:
         "Fn::Base64":
