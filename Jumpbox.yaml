@@ -18,6 +18,10 @@ Resources:
           CidrIp: 0.0.0.0/0
   EC2:
     Type: "AWS::EC2::Instance"
+    CreationPolicy:
+      ResourceSignal:
+        Count: "1"
+        Timeout: PT15M
     Properties:
       ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMALINUX] # Dynamic mapping + Pseudo Parameter
       InstanceType: "t2.micro"
@@ -38,3 +42,8 @@ Resources:
             cd /var/www/html
             wget https://www.adminer.org/latest.php
             mv latest.php index.php
+            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource EC2 --region ${AWS::Region}
+Outputs:
+  wproot:
+    Description: Access URL
+    Value: !Join ["", ["http://", !GetAtt EC2.PublicIp, "/index.php"]]
