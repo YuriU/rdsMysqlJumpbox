@@ -113,6 +113,8 @@ Resources:
 
             rabbitmqctl set_user_tags ${AdminUserName} administrator
 
+            rabbitmqctl set_permissions -p / ${AdminUserName} .* .* .*
+
             /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource EC2Master --region ${AWS::Region}
             
 Outputs:
