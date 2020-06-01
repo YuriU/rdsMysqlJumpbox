@@ -5,13 +5,24 @@ Parameters:
   SubnetId:
     Description: Enter the SubnetId
     Type: AWS::EC2::Subnet::Id
+  AdminUserName: 
+    Type: String
+    Description: RQM user name
+  AdminUserPassword: 
+    Type: String
+    NoEcho: true
+    MinLength: 1
+    MaxLength: 41
+    AllowedPattern: ^[a-zA-Z0-9]*$
+    Description: RQM user password
+    
 Mappings:
   RegionMap:
     us-west-1:
       AMALINUX: "ami-0b2d8d1abb76a53d8"
     eu-central-1:
       AMALINUX: "ami-0d4c3eabb9e72650a"
-
+    
 Resources:
   Role:
     Type: "AWS::IAM::Role"
@@ -46,7 +57,15 @@ Resources:
           FromPort: 80
           ToPort: 80
           CidrIp: 0.0.0.0/0
-  EC2:
+        - IpProtocol: tcp
+          FromPort: 5672
+          ToPort: 5672
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 15672
+          ToPort: 15672
+          CidrIp: 0.0.0.0/0
+  EC2Master:
     Type: "AWS::EC2::Instance"
     CreationPolicy:
       ResourceSignal:
@@ -59,7 +78,7 @@ Resources:
       Tags:
         - 
           Key: Name
-          Value: !Sub "${AWS::StackName} Instance"
+          Value: !Sub "${AWS::StackName} Master Instance"
       SecurityGroupIds:
         - !Ref SG
       IamInstanceProfile: !Ref IAMInstanceProfile
@@ -83,7 +102,23 @@ Resources:
             curl -s https://packagecloud.io/install/repositories/rabbitmq/rabbitmq-server/script.rpm.sh | sudo bash
 
             yum install rabbitmq-server -y
+            
+            service rabbitmq-server start
 
             chkconfig rabbitmq-server on
+            
+            rabbitmq-plugins enable rabbitmq_management
+            
+            rabbitmqctl add_user ${AdminUserName} ${AdminUserPassword}
 
-            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource EC2 --region ${AWS::Region}
+            rabbitmqctl set_user_tags ${AdminUserName} administrator
+
+            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource EC2Master --region ${AWS::Region}
+            
+Outputs:
+    MasterNodeManagementPlugin:
+        Description: Master node management url
+        Value: 
+            !Sub
+              - http://${PrivateIp}:15672
+              - PrivateIp: !GetAtt EC2Master.PrivateIp
