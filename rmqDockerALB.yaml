@@ -21,6 +21,13 @@ Parameters:
   RLangCookie: 
     Type: String
     Description: Random string
+  InstanceType:
+    Type: String
+    Default: t2.micro
+    AllowedValues: 
+      - t2.micro
+      - c5.large
+      - c5.2xlarge
     
 Mappings:
   RegionMap:
@@ -79,6 +86,10 @@ Resources:
           FromPort: 4369
           ToPort: 4369
           CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          SourceSecurityGroupId: !Ref AlbSG
 
   AlbSG:
     Type: "AWS::EC2::SecurityGroup"
@@ -99,7 +110,7 @@ Resources:
         Timeout: PT15M
     Properties:
       ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMALINUX] # Dynamic mapping + Pseudo Parameter
-      InstanceType: "t2.micro"
+      InstanceType: !Ref InstanceType
       SubnetId: !Ref SubnetIdMaster
       Tags:
         - 
@@ -160,7 +171,7 @@ Resources:
         Timeout: PT15M
     Properties:
       ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMALINUX] # Dynamic mapping + Pseudo Parameter
-      InstanceType: "t2.micro"
+      InstanceType: !Ref InstanceType
       SubnetId: !Ref SubnetIdSlave
       Tags:
         - 
@@ -218,7 +229,7 @@ Resources:
   ALBTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: !Sub "${AWS::StackName}-ALB-Target-Group"
+      Name: !Sub "${AWS::StackName}-TG"
       Port: 80
       Protocol: HTTP
       VpcId: !Ref VpcId
@@ -239,6 +250,7 @@ Resources:
   ALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties: 
+      Scheme: internal
       SecurityGroups:
         - !Ref AlbSG
       Subnets:
@@ -263,3 +275,7 @@ Outputs:
             !Sub
               - http://${PrivateIp}:15672
               - PrivateIp: !GetAtt EC2Master.PrivateIp
+    LoadBallancerUrl:
+        Description: LoadBalancer Url
+        Value: 
+            !GetAtt ALB.DNSName
