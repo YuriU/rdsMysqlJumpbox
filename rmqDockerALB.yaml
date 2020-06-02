@@ -1,0 +1,255 @@
+Parameters:
+  VpcId:
+    Description: Enter the VpcId
+    Type: "AWS::EC2::VPC::Id"
+  SubnetIdMaster:
+    Description: Enter the SubnetId of Master Node
+    Type: AWS::EC2::Subnet::Id
+  SubnetIdSlave:
+    Description: Enter the SubnetId of Slave
+    Type: AWS::EC2::Subnet::Id
+  AdminUserName: 
+    Type: String
+    Description: RQM user name
+  AdminUserPassword: 
+    Type: String
+    NoEcho: true
+    MinLength: 1
+    MaxLength: 41
+    AllowedPattern: ^[a-zA-Z0-9]*$
+    Description: RQM user password
+  RLangCookie: 
+    Type: String
+    Description: Random string
+    
+Mappings:
+  RegionMap:
+    us-west-1:
+      AMALINUX: "ami-0b2d8d1abb76a53d8"
+    eu-central-1:
+      AMALINUX: "ami-0d4c3eabb9e72650a"
+    
+Resources:
+  Role:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM"
+
+  IAMInstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Path: /
+      Roles:
+        - !Ref Role    
+
+  InstanceSG:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+       VpcId: !Ref VpcId
+       GroupDescription: !Sub "${AWS::StackName} Instance Security group"
+       SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 5672
+          ToPort: 5672
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 15672
+          ToPort: 15672
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 25672
+          ToPort: 25672
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 4369
+          ToPort: 4369
+          CidrIp: 0.0.0.0/0
+
+  AlbSG:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+       VpcId: !Ref VpcId
+       GroupDescription: !Sub "${AWS::StackName} Alb Security group"
+       SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  EC2Master:
+    Type: "AWS::EC2::Instance"
+    CreationPolicy:
+      ResourceSignal:
+        Count: "1"
+        Timeout: PT15M
+    Properties:
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMALINUX] # Dynamic mapping + Pseudo Parameter
+      InstanceType: "t2.micro"
+      SubnetId: !Ref SubnetIdMaster
+      Tags:
+        - 
+          Key: Name
+          Value: !Sub "${AWS::StackName} Master Instance"
+      SecurityGroupIds:
+        - !Ref InstanceSG
+      IamInstanceProfile: !Ref IAMInstanceProfile
+      UserData:
+        "Fn::Base64":
+          !Sub |
+            #!/bin/bash
+            
+            yum update -y
+
+            # Installing RMQ-Server
+            # import the new PackageCloud key that will be used starting December 1st, 2018 (GMT)
+            rpm --import https://packagecloud.io/rabbitmq/rabbitmq-server/gpgkey
+            # import the old PackageCloud key that will be discontinued on December 1st, 2018 (GMT)
+            rpm --import https://packagecloud.io/gpg.key
+            curl -s https://packagecloud.io/install/repositories/rabbitmq/erlang/script.rpm.sh | sudo bash
+            curl -s https://packagecloud.io/install/repositories/rabbitmq/rabbitmq-server/script.rpm.sh | sudo bash
+
+            # Installing rabbitMq
+            yum install rabbitmq-server -y
+            
+            # Configuring RLangCookie
+            echo ${RLangCookie} > /var/lib/rabbitmq/.erlang.cookie
+            chown rabbitmq /var/lib/rabbitmq/.erlang.cookie
+            chmod 400 /var/lib/rabbitmq/.erlang.cookie
+            export RABBITMQ_ERLANG_COOKIE=${RLangCookie}
+
+            # Starting rabbitMq
+            service rabbitmq-server start
+            chkconfig rabbitmq-server on
+
+            # Installing management plugin            
+            rabbitmq-plugins enable rabbitmq_management
+
+            # Configuring user
+            rabbitmqctl add_user ${AdminUserName} ${AdminUserPassword}
+            rabbitmqctl set_user_tags ${AdminUserName} administrator
+            rabbitmqctl set_permissions -p / ${AdminUserName} ".*" ".*" ".*"
+
+            # Installing docker
+            amazon-linux-extras install docker
+            service docker start
+            usermod -a -G docker ec2-user
+
+            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource EC2Master --region ${AWS::Region}
+            
+  EC2Slave:
+    Type: "AWS::EC2::Instance"
+    DependsOn: EC2Master
+    CreationPolicy:
+      ResourceSignal:
+        Count: "1"
+        Timeout: PT15M
+    Properties:
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMALINUX] # Dynamic mapping + Pseudo Parameter
+      InstanceType: "t2.micro"
+      SubnetId: !Ref SubnetIdSlave
+      Tags:
+        - 
+          Key: Name
+          Value: !Sub "${AWS::StackName} Slave Instance"
+      SecurityGroupIds:
+        - !Ref InstanceSG
+      IamInstanceProfile: !Ref IAMInstanceProfile
+      UserData:
+        "Fn::Base64":
+          !Sub 
+            - |+
+              #!/bin/bash
+              
+              yum update -y
+
+              # Installing RMQ-Server
+              # import the new PackageCloud key that will be used starting December 1st, 2018 (GMT)
+              rpm --import https://packagecloud.io/rabbitmq/rabbitmq-server/gpgkey
+
+              # import the old PackageCloud key that will be discontinued on December 1st, 2018 (GMT)
+              rpm --import https://packagecloud.io/gpg.key
+              curl -s https://packagecloud.io/install/repositories/rabbitmq/erlang/script.rpm.sh | sudo bash
+              curl -s https://packagecloud.io/install/repositories/rabbitmq/rabbitmq-server/script.rpm.sh | sudo bash
+
+              # Installing rabbitMq
+              yum install rabbitmq-server -y
+
+              # Configuring RLangCookie
+              echo ${RLangCookie} > /var/lib/rabbitmq/.erlang.cookie
+              chown rabbitmq /var/lib/rabbitmq/.erlang.cookie
+              chmod 400 /var/lib/rabbitmq/.erlang.cookie
+              export RABBITMQ_ERLANG_COOKIE=${RLangCookie}
+
+              # Starting rabbitMq
+              service rabbitmq-server start
+              chkconfig rabbitmq-server on
+
+              # Attaching to master node
+              rabbitmqctl stop_app
+              rabbitmqctl reset              
+              rabbitmqctl join_cluster rabbit@${HostName}
+              rabbitmqctl start_app
+
+              # Installing docker
+              amazon-linux-extras install docker
+              service docker start
+              usermod -a -G docker ec2-user
+
+              /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource EC2Slave --region ${AWS::Region}
+
+            - HostName: 
+                !Select [0, !Split [".", !GetAtt EC2Master.PrivateDnsName]]
+
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "${AWS::StackName}-ALB-Target-Group"
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref VpcId
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /
+      HealthCheckPort: 80
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 5
+      TargetType: instance 
+      Targets:
+      - Id: !Ref EC2Master
+        Port: 80
+      - Id: !Ref EC2Slave
+        Port: 80
+
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      SecurityGroups:
+        - !Ref AlbSG
+      Subnets:
+        - !Ref SubnetIdSlave
+        - !Ref SubnetIdMaster
+  
+
+Outputs:
+    MasterNodeManagementPlugin:
+        Description: Master node management url
+        Value: 
+            !Sub
+              - http://${PrivateIp}:15672
+              - PrivateIp: !GetAtt EC2Master.PrivateIp
