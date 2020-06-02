@@ -200,13 +200,14 @@ Resources:
 
               echo ${HostName}
               
-              rabbitmqctl join_cluster rabbit@${EC2Master.PrivateIp}
+              rabbitmqctl join_cluster rabbit@${HostName}
 
               rabbitmqctl start_app
 
               /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource EC2Slave --region ${AWS::Region}
 
-            - HostName: !GetAtt EC2Master.PrivateIp
+            - HostName: 
+                !Select [0, !Split [".", !GetAtt EC2Master.PrivateDnsName]] 
 
 Outputs:
     MasterNodeManagementPlugin:
