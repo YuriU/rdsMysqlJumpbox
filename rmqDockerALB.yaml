@@ -244,7 +244,17 @@ Resources:
       Subnets:
         - !Ref SubnetIdSlave
         - !Ref SubnetIdMaster
-  
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: "HTTP"
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+
 
 Outputs:
     MasterNodeManagementPlugin:
