@@ -2,18 +2,15 @@ Parameters:
   VpcId:
     Description: Enter the VpcId
     Type: "AWS::EC2::VPC::Id"
-  MasterSubnetId:
+  SubnetIdMaster:
     Description: Enter the SubnetId of Master Node
     Type: AWS::EC2::Subnet::Id
-  SlaveSubnetId:
+  SubnetIdSlave:
     Description: Enter the SubnetId of Slave
     Type: AWS::EC2::Subnet::Id
   AdminUserName: 
     Type: String
     Description: RQM user name
-  RLangCookie: 
-    Type: String
-    Description: Random string
   AdminUserPassword: 
     Type: String
     NoEcho: true
@@ -21,6 +18,9 @@ Parameters:
     MaxLength: 41
     AllowedPattern: ^[a-zA-Z0-9]*$
     Description: RQM user password
+  RLangCookie: 
+    Type: String
+    Description: Random string
     
 Mappings:
   RegionMap:
@@ -89,7 +89,7 @@ Resources:
     Properties:
       ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMALINUX] # Dynamic mapping + Pseudo Parameter
       InstanceType: "t2.micro"
-      SubnetId: !Ref MasterSubnetId
+      SubnetId: !Ref SubnetIdMaster
       Tags:
         - 
           Key: Name
@@ -105,37 +105,32 @@ Resources:
             yum update -y
 
             # Installing RMQ-Server
-
             # import the new PackageCloud key that will be used starting December 1st, 2018 (GMT)
             rpm --import https://packagecloud.io/rabbitmq/rabbitmq-server/gpgkey
-
             # import the old PackageCloud key that will be discontinued on December 1st, 2018 (GMT)
             rpm --import https://packagecloud.io/gpg.key
-
             curl -s https://packagecloud.io/install/repositories/rabbitmq/erlang/script.rpm.sh | sudo bash
-
             curl -s https://packagecloud.io/install/repositories/rabbitmq/rabbitmq-server/script.rpm.sh | sudo bash
 
+            # Installing rabbitMq
             yum install rabbitmq-server -y
             
+            # Configuring RLangCookie
             echo ${RLangCookie} > /var/lib/rabbitmq/.erlang.cookie
-
             chown rabbitmq /var/lib/rabbitmq/.erlang.cookie
-
             chmod 400 /var/lib/rabbitmq/.erlang.cookie
-
             export RABBITMQ_ERLANG_COOKIE=${RLangCookie}
 
+            # Starting rabbitMq
             service rabbitmq-server start
-
             chkconfig rabbitmq-server on
-            
+
+            # Installing management plugin            
             rabbitmq-plugins enable rabbitmq_management
-            
+
+            # Configuring user
             rabbitmqctl add_user ${AdminUserName} ${AdminUserPassword}
-
             rabbitmqctl set_user_tags ${AdminUserName} administrator
-
             rabbitmqctl set_permissions -p / ${AdminUserName} ".*" ".*" ".*"
 
             /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource EC2Master --region ${AWS::Region}
@@ -150,7 +145,7 @@ Resources:
     Properties:
       ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMALINUX] # Dynamic mapping + Pseudo Parameter
       InstanceType: "t2.micro"
-      SubnetId: !Ref SlaveSubnetId
+      SubnetId: !Ref SubnetIdSlave
       Tags:
         - 
           Key: Name
@@ -167,41 +162,31 @@ Resources:
               yum update -y
 
               # Installing RMQ-Server
-
               # import the new PackageCloud key that will be used starting December 1st, 2018 (GMT)
               rpm --import https://packagecloud.io/rabbitmq/rabbitmq-server/gpgkey
 
               # import the old PackageCloud key that will be discontinued on December 1st, 2018 (GMT)
               rpm --import https://packagecloud.io/gpg.key
-
               curl -s https://packagecloud.io/install/repositories/rabbitmq/erlang/script.rpm.sh | sudo bash
-
               curl -s https://packagecloud.io/install/repositories/rabbitmq/rabbitmq-server/script.rpm.sh | sudo bash
 
+              # Installing rabbitMq
               yum install rabbitmq-server -y
 
+              # Configuring RLangCookie
               echo ${RLangCookie} > /var/lib/rabbitmq/.erlang.cookie
-
               chown rabbitmq /var/lib/rabbitmq/.erlang.cookie
-
               chmod 400 /var/lib/rabbitmq/.erlang.cookie
-
               export RABBITMQ_ERLANG_COOKIE=${RLangCookie}
 
+              # Starting rabbitMq
               service rabbitmq-server start
-
               chkconfig rabbitmq-server on
 
+              # Attaching to master node
               rabbitmqctl stop_app
-
-              rabbitmqctl reset
-
-              echo "${EC2Master.PrivateIp}"
-
-              echo ${HostName}
-              
+              rabbitmqctl reset              
               rabbitmqctl join_cluster rabbit@${HostName}
-
               rabbitmqctl start_app
 
               /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource EC2Slave --region ${AWS::Region}
