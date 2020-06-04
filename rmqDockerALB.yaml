@@ -37,6 +37,20 @@ Mappings:
       AMALINUX: "ami-0d4c3eabb9e72650a"
     
 Resources:
+  CommandsBucketAccessPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: !Sub "${AWS::StackName}_CommandsBucketPolicy"
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 's3:GetObject'
+            Resource: !GetAtt CommandsBucket.Arn
+      Roles:
+        - !Ref Role
+
   Role:
     Type: "AWS::IAM::Role"
     Properties:
@@ -90,6 +104,13 @@ Resources:
           FromPort: 0
           ToPort: 65535
           SourceSecurityGroupId: !Ref AlbSG
+
+  CommandsBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      Tags: 
+        - Key: Description
+          Value: !Sub "${AWS::StackName} Script bucket"
 
   AlbSG:
     Type: "AWS::EC2::SecurityGroup"
