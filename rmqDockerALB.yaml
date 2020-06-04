@@ -296,7 +296,13 @@ Outputs:
             !Sub
               - http://${PrivateIp}:15672
               - PrivateIp: !GetAtt EC2Master.PrivateIp
+
     LoadBallancerUrl:
         Description: LoadBalancer Url
         Value: 
             !GetAtt ALB.DNSName
+
+    CommandsBucket:
+        Description: Commands bucket
+        Value: 
+            !Ref CommandsBucket
